@@ -13,9 +13,12 @@ import {
 } from "./liveStats";
 import { applyTheme, initialThemeId, THEMES } from "./themes";
 import { playFinishSound, playKeySound, setSoundEnabled } from "./sound";
+import { QUOTES } from "./quotes";
 
-type Mode = "time" | "words";
+type Mode = "time" | "words" | "quote" | "zen" | "custom";
 type View = "test" | "leaderboard" | "settings";
+type Difficulty = "normal" | "expert" | "master";
+type Funbox = "none" | "mirror" | "upside_down";
 
 interface FinishedWord {
   target: string;
@@ -50,6 +53,18 @@ export default function App() {
   const [soundOn, setSoundOn] = createSignal(true);
   const [focused, setFocused] = createSignal(false);
   const [view, setView] = createSignal<View>("test");
+  const [punctuation, setPunctuation] = createSignal(false);
+  const [numbers, setNumbers] = createSignal(false);
+  const [difficulty, setDifficulty] = createSignal<Difficulty>("normal");
+  const [blind, setBlind] = createSignal(false);
+  const [stopOnError, setStopOnError] = createSignal(false);
+  const [funbox, setFunbox] = createSignal<Funbox>("none");
+  const [capsLock, setCapsLock] = createSignal(false);
+  const [windowBlurred, setWindowBlurred] = createSignal(false);
+  const [customText, setCustomText] = createSignal("");
+  const [customStarted, setCustomStarted] = createSignal(false);
+  const [customError, setCustomError] = createSignal<string | null>(null);
+  const [resultSaveError, setResultSaveError] = createSignal(false);
   const [leaderboard, setLeaderboard] = createSignal<LeaderboardEntry[]>([]);
   const [leaderboardLoading, setLeaderboardLoading] = createSignal(false);
   const [leaderboardError, setLeaderboardError] = createSignal<string | null>(
@@ -93,10 +108,60 @@ export default function App() {
   let snapshot = { correct: 0, incorrect: 0 };
   let lastBucketSecond = -1;
 
+  // Word generation for the current mode. Punctuation and numbers
+  // only apply to generated-word modes (time / words / zen); quote and
+  // custom text are fixed, so those toggles are disabled there.
+  function buildWords(): string[] {
+    const m = mode();
+    if (m === "quote") {
+      const quote = QUOTES[Math.floor(Math.random() * QUOTES.length)];
+      return quote.split(" ");
+    }
+    if (m === "custom") {
+      return customText().split(/\s+/).filter(Boolean);
+    }
+    const count = m === "words" ? wordCount() : 200;
+    let list = pickRandomWords(WORDS, count);
+    if (numbers()) {
+      list = list.map((w) =>
+        Math.random() < 0.2 ? String(Math.floor(Math.random() * 10000)) : w,
+      );
+    }
+    if (punctuation()) {
+      const marks = [".", ",", "?", "!", ":", ";"];
+      let capitalizeNext = false;
+      list = list.map((w) => {
+        let out = capitalizeNext
+          ? w.charAt(0).toUpperCase() + w.slice(1)
+          : w;
+        capitalizeNext = false;
+        if (Math.random() < 0.25) {
+          const mark = marks[Math.floor(Math.random() * marks.length)];
+          out += mark;
+          if (mark === "." || mark === "?" || mark === "!") {
+            capitalizeNext = true;
+          }
+        }
+        return out;
+      });
+    }
+    return list;
+  }
+
   function newTest() {
     stopTimer();
-    const count = mode() === "time" ? 200 : wordCount();
-    setWords(pickRandomWords(WORDS, count));
+    if (mode() === "custom" && !customStarted()) {
+      // Custom setup view stays; the test starts from its Start button.
+      setWords([]);
+      setWordIndex(0);
+      setInput("");
+      setFinishedWords([]);
+      setStartedAt(null);
+      setFinished(false);
+      setResultSaveError(false);
+      return;
+    }
+    setWords(buildWords());
     setWordIndex(0);
     setInput("");
     setFinishedWords([]);
@@ -108,9 +173,32 @@ export default function App() {
     setLiveElapsed(0);
     setHistory(emptyHistory());
     setFinishedHistory(emptyHistory());
+    setResultSaveError(false);
     snapshot = { correct: 0, incorrect: 0 };
     lastBucketSecond = -1;
     inputEl?.focus();
+  }
+
+  function startCustomTest() {
+    const text = customText().trim();
+    if (!text) {
+      setCustomError("Custom text khali hai, kuch type karo.");
+      return;
+    }
+    setCustomError(null);
+    setCustomStarted(true);
+    newTest();
+  }
+
+  function consistencyFrom(speed: number[]): number {
+    const values = speed.filter((v) => v > 0);
+    if (values.length < 2) return 100;
+    const mean = values.reduce((a, b) => a + b, 0) / values.length;
+    if (mean === 0) return 0;
+    const variance =
+      values.reduce((a, b) => a + (b - mean) * (b - mean), 0) / values.length;
+    const std = Math.sqrt(variance);
+    return Math.max(0, Math.round(100 - (std / mean) * 100));
   }
 
   function stopTimer() {
@@ -168,7 +256,8 @@ export default function App() {
         }),
       });
     } catch {
-      // Backend is optional. Results still show locally.
+      // Backend is optional. Results still show locally, with a note.
+      setResultSaveError(true);
     }
   }
 
@@ -232,18 +321,28 @@ export default function App() {
 
   function onKeyDown(e: KeyboardEvent) {
     if (finished()) return;
+    setCapsLock(e.getModifierState("CapsLock"));
     if (e.key === "Escape") {
       e.preventDefault();
-      newTest();
+      if (mode() === "zen" && startedAt() !== null) finishTest();
+      else newTest();
       return;
     }
     if (e.key === "Backspace") {
+      if (difficulty() === "master") {
+        e.preventDefault();
+        return;
+      }
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
         setInput("");
         return;
       }
       if (input() === "" && wordIndex() > 0) {
+        if (difficulty() === "expert") {
+          e.preventDefault();
+          return;
+        }
         e.preventDefault();
         const prev = finishedWords()[finishedWords().length - 1];
         if (!prev) return;
@@ -262,7 +361,15 @@ export default function App() {
     const next = [...finishedWords(), { target, typed: value }];
     setFinishedWords(next);
     setInput("");
-    if (mode() === "words" && wordIndex() + 1 >= words().length) {
+    if (mode() === "zen" && wordIndex() + 1 >= words().length) {
+      setWords([...words(), ...buildWords().slice(0, 100)]);
+      setWordIndex(wordIndex() + 1);
+      return;
+    }
+    if (
+      (mode() === "words" || mode() === "quote" || mode() === "custom") &&
+      wordIndex() + 1 >= words().length
+    ) {
       setWordIndex(wordIndex() + 1);
       finishTest();
       return;
@@ -275,11 +382,26 @@ export default function App() {
     if (value.length > input().length) {
       const target = words()[wordIndex()];
       const pos = value.length - 1;
-      if (target) playKeySound(value[pos] === target[pos]);
+      const correct = target ? value[pos] === target[pos] : true;
+      if (target) playKeySound(correct);
+      startTimerIfNeeded();
+      setInput(value);
+      // Stop-on-error: finish on the first incorrect letter.
+      if (stopOnError() && !correct) finishTest();
+      return;
     }
     startTimerIfNeeded();
     setInput(value);
   }
+
+  function onWindowBlur() {
+    setWindowBlurred(true);
+  }
+  function onWindowFocus() {
+    setWindowBlurred(false);
+  }
+  window.addEventListener("blur", onWindowBlur);
+  window.addEventListener("focus", onWindowFocus);
 
   function autofocusHandler(e: KeyboardEvent) {
     if (finished()) return;
@@ -292,6 +414,8 @@ export default function App() {
   document.addEventListener("keydown", autofocusHandler);
   onCleanup(() => {
     document.removeEventListener("keydown", autofocusHandler);
+    window.removeEventListener("blur", onWindowBlur);
+    window.removeEventListener("focus", onWindowFocus);
     stopTimer();
   });
 
@@ -299,6 +423,8 @@ export default function App() {
     void mode();
     void timeLimit();
     void wordCount();
+    // Custom mode has a setup view, not an auto-generated test.
+    if (mode() === "custom" && !customStarted()) return;
     if (words().length === 0) newTest();
   });
 
@@ -418,43 +544,111 @@ export default function App() {
               >
                 words
               </button>
+              <button
+                class={mode() === "quote" ? "dt-accent-text font-bold" : "dt-muted"}
+                onClick={() => {
+                  setMode("quote");
+                  newTest();
+                }}
+              >
+                quote
+              </button>
+              <button
+                class={mode() === "zen" ? "dt-accent-text font-bold" : "dt-muted"}
+                onClick={() => {
+                  setMode("zen");
+                  newTest();
+                }}
+              >
+                zen
+              </button>
+              <button
+                class={mode() === "custom" ? "dt-accent-text font-bold" : "dt-muted"}
+                onClick={() => {
+                  setMode("custom");
+                  setCustomStarted(false);
+                  newTest();
+                }}
+              >
+                custom
+              </button>
             </div>
             <div class="dt-surface flex gap-4 rounded-lg px-4 py-2">
-              <Show when={mode() === "time"}>
-                <For each={[15, 30, 60, 120]}>
-                  {(n) => (
-                    <button
-                      class={
-                        timeLimit() === n ? "dt-accent-text font-bold" : "dt-muted"
-                      }
-                      onClick={() => {
-                        setTimeLimit(n);
-                        newTest();
-                      }}
-                    >
-                      {n}
-                    </button>
-                  )}
-                </For>
-              </Show>
-              <Show when={mode() === "words"}>
-                <For each={[10, 25, 50, 100]}>
-                  {(n) => (
-                    <button
-                      class={
-                        wordCount() === n ? "dt-accent-text font-bold" : "dt-muted"
-                      }
-                      onClick={() => {
-                        setWordCount(n);
-                        newTest();
-                      }}
-                    >
-                      {n}
-                    </button>
-                  )}
-                </For>
+              <Show
+                when={
+                  mode() === "time" || mode() === "words" || mode() === "zen"
+                }
+              >
+                <button
+                  class={punctuation() ? "dt-accent-text font-bold" : "dt-muted"}
+                  title={
+                    mode() === "zen"
+                      ? "punctuation is disabled in zen mode"
+                      : "punctuation"
+                  }
+                  disabled={mode() === "zen"}
+                  onClick={() => {
+                    setPunctuation(!punctuation());
+                    newTest();
+                  }}
+                >
+                  @ punctuation
+                </button>
+                <button
+                  class={numbers() ? "dt-accent-text font-bold" : "dt-muted"}
+                  title={
+                    mode() === "zen"
+                      ? "numbers are disabled in zen mode"
+                      : "numbers"
+                  }
+                  disabled={mode() === "zen"}
+                  onClick={() => {
+                    setNumbers(!numbers());
+                    newTest();
+                  }}
+                >
+                  # numbers
+                </button>
               </Show>
             </div>
+            <Show when={mode() === "time" || mode() === "words"}>
+              <div class="dt-surface flex gap-4 rounded-lg px-4 py-2">
+                <Show when={mode() === "time"}>
+                  <For each={[15, 30, 60, 120]}>
+                    {(n) => (
+                      <button
+                        class={
+                          timeLimit() === n ? "dt-accent-text font-bold" : "dt-muted"
+                        }
+                        onClick={() => {
+                          setTimeLimit(n);
+                          newTest();
+                        }}
+                      >
+                        {n}
+                      </button>
+                    )}
+                  </For>
+                </Show>
+                <Show when={mode() === "words"}>
+                  <For each={[10, 25, 50, 100]}>
+                    {(n) => (
+                      <button
+                        class={
+                          wordCount() === n ? "dt-accent-text font-bold" : "dt-muted"
+                        }
+                        onClick={() => {
+                          setWordCount(n);
+                          newTest();
+                        }}
+                      >
+                        {n}
+                      </button>
+                    )}
+                  </For>
+                </Show>
+              </div>
+            </Show>
             <div class="dt-surface rounded-lg px-4 py-2">
               <button class="dt-muted" title="restart test" onClick={newTest}>
                 ↻
@@ -462,13 +656,63 @@ export default function App() {
             </div>
           </section>
 
-          <Show when={!finished()}>
+          <Show when={mode() === "custom" && !customStarted() && !finished()}>
+            <section class="dt-surface mx-auto mt-10 w-full max-w-2xl rounded-xl p-6">
+              <h2 class="mb-3 text-lg font-bold">Custom text</h2>
+              <p class="dt-muted mb-4 text-sm">
+                Apna text yahan paste karo, fir Start dabao. Test usi text
+                par chalega.
+              </p>
+              <textarea
+                class="dt-border w-full rounded-lg border bg-transparent p-3 text-base"
+                rows={6}
+                placeholder="Type or paste your text here..."
+                value={customText()}
+                onInput={(e) => setCustomText(e.currentTarget.value)}
+              />
+              <Show when={customError()}>
+                <p class="text-[var(--dt-error)] mt-3 text-sm">
+                  {customError()}
+                </p>
+              </Show>
+              <button
+                class="dt-accent-bg mt-4 rounded-lg px-6 py-2 font-bold"
+                onClick={startCustomTest}
+              >
+                Start custom test
+              </button>
+            </section>
+          </Show>
+
+          <Show
+            when={
+              !finished() &&
+              (mode() !== "custom" || customStarted())
+            }
+          >
+            <Show when={capsLock()}>
+              <p class="text-[var(--dt-error)] mt-10 text-center text-sm font-bold">
+                Caps Lock on hai
+              </p>
+            </Show>
+            <Show when={windowBlurred()}>
+              <p class="dt-muted mt-2 text-center text-sm">
+                Window focus me nahi hai — window par click karo, fir type karo.
+              </p>
+            </Show>
             {/* Timer + live stats, only once the test has started. */}
             <Show when={startedAt() !== null}>
               <section class="mb-6 mt-10 flex flex-wrap items-end gap-8">
                 <span class="dt-accent-text text-2xl">
                   <Show when={mode() === "time"}>{timeLeft()}s</Show>
-                  <Show when={mode() === "words"}>
+                  <Show when={mode() === "zen"}>{liveElapsed()}s</Show>
+                  <Show
+                    when={
+                      mode() === "words" ||
+                      mode() === "quote" ||
+                      mode() === "custom"
+                    }
+                  >
                     {wordIndex() + 1} / {words().length}
                   </Show>
                 </span>
@@ -492,34 +736,83 @@ export default function App() {
               </section>
             </Show>
 
-            <p class="dt-muted mb-6 mt-10 text-center text-sm">english</p>
+            <p class="dt-muted mb-6 mt-10 text-center text-sm">
+              <Show when={mode() === "quote" || mode() === "custom"}>
+                {mode()}
+              </Show>
+              <Show when={mode() !== "quote" && mode() !== "custom"}>
+                english
+              </Show>
+              <Show when={punctuation()}> • punctuation</Show>
+              <Show when={numbers()}> • numbers</Show>
+              <Show when={mode() === "zen"}>
+                {" "}
+                • zen — finish karne ke liye Esc dabao
+              </Show>
+            </p>
 
             {/* Words: plain on the page background. While unfocused the
                 words blur and the focus warning sits centred over them. */}
-            <section class="relative" onClick={() => inputEl?.focus()}>
+            <section
+              class="relative"
+              style={
+                funbox() === "mirror"
+                  ? { transform: "scaleX(-1)" }
+                  : funbox() === "upside_down"
+                    ? { transform: "rotate(180deg)" }
+                    : {}
+              }
+              onClick={() => inputEl?.focus()}
+            >
               <div class={focused() ? "" : "dt-blurred"}>
                 <div class="cursor-pointer text-xl leading-[2] sm:text-2xl md:text-[1.6rem]">
-                  <For each={words().slice(0, mode() === "words" ? words().length : 60)}>
+                  {/* Time/zen show 60 words at a time, in a window that
+                      moves forward as you type, so the page stays the
+                      same height as the reference app. Words/quote/
+                      custom show their whole text at once. */}
+                  <For
+                    each={(() => {
+                      const w = words();
+                      if (
+                        mode() === "words" ||
+                        mode() === "quote" ||
+                        mode() === "custom"
+                      ) {
+                        return w;
+                      }
+                      const start = Math.floor(wordIndex() / 60) * 60;
+                      return w.slice(start, start + 60);
+                    })()}
+                  >
                     {(word, i) => {
-                      const done = finishedWords()[i()];
-                      const isCurrent = i() === wordIndex();
+                      const windowStart =
+                        mode() === "words" ||
+                        mode() === "quote" ||
+                        mode() === "custom"
+                          ? 0
+                          : Math.floor(wordIndex() / 60) * 60;
+                      const globalIndex = windowStart + i();
+                      const done = finishedWords()[globalIndex];
+                      const isCurrent = globalIndex === wordIndex();
                       return (
                         <span class="mr-3 inline-block">
                           <For each={word.split("")}>
                             {(ch, ci) => {
                               let cls = "text-[var(--dt-muted)]";
-                              if (done) {
-                                cls =
-                                  done.typed[ci()] === ch
-                                    ? "text-[var(--dt-text)]"
-                                    : "text-[var(--dt-error)]";
-                              } else if (isCurrent) {
-                                const typed = input()[ci()];
-                                if (typed !== undefined) {
+                              if (!blind()) {
+                                if (done) {
                                   cls =
-                                    typed === ch
+                                    done.typed[ci()] === ch
                                       ? "text-[var(--dt-text)]"
                                       : "text-[var(--dt-error)]";
+                                } else if (isCurrent) {
+                                  const typed = input()[ci()];
+                                  if (typed !== undefined) {
+                                    cls =
+                                      typed === ch
+                                        ? "text-[var(--dt-text)]"
+                                        : "text-[var(--dt-error)]";
+                                  }
                                 }
                               }
                               return (
@@ -563,7 +856,7 @@ export default function App() {
               </Show>
             </section>
 
-            <div class="mt-8 text-center">
+            <div class="mt-8 flex items-center justify-center gap-6 text-center">
               <button
                 class="dt-muted text-2xl"
                 title="restart test"
@@ -571,6 +864,14 @@ export default function App() {
               >
                 ↻
               </button>
+              <Show when={mode() === "zen" && startedAt() !== null}>
+                <button
+                  class="dt-accent-bg rounded px-4 py-2 text-sm font-bold"
+                  onClick={finishTest}
+                >
+                  Finish test
+                </button>
+              </Show>
             </div>
 
             <input
@@ -589,7 +890,17 @@ export default function App() {
             {(stats) => (
               <section class="dt-surface dt-fade-in mt-10 rounded p-6">
                 <h2 class="mb-4 text-2xl font-bold">Results</h2>
-                <div class="grid grid-cols-2 gap-4 text-center sm:grid-cols-4">
+                <p class="dt-muted mb-4 text-sm">
+                  {mode()} •{" "}
+                  <Show when={mode() === "time"}>{timeLimit()}s</Show>
+                  <Show when={mode() === "words"}>{wordCount()} words</Show>
+                  <Show when={mode() === "quote"}>quote</Show>
+                  <Show when={mode() === "zen"}>zen</Show>
+                  <Show when={mode() === "custom"}>custom</Show>
+                  <Show when={punctuation()}> • punctuation</Show>
+                  <Show when={numbers()}> • numbers</Show>
+                </p>
+                <div class="grid grid-cols-2 gap-4 text-center sm:grid-cols-5">
                   <div>
                     <div class="dt-accent-text text-3xl">{stats().wpm}</div>
                     <div class="dt-muted text-sm">wpm</div>
@@ -604,12 +915,24 @@ export default function App() {
                   </div>
                   <div>
                     <div class="text-3xl">
+                      {consistencyFrom(finishedHistory().speed)}%
+                    </div>
+                    <div class="dt-muted text-sm">consistency</div>
+                  </div>
+                  <div>
+                    <div class="text-3xl">
                       {stats().correctChars}/
                       {stats().correctChars + stats().incorrectChars}
                     </div>
                     <div class="dt-muted text-sm">correct chars</div>
                   </div>
                 </div>
+                <Show when={resultSaveError()}>
+                  <p class="text-[var(--dt-error)] mt-4 text-sm">
+                    Backend nahi chal raha hai, isliye ye result save nahi
+                    hua — sirf local dikh raha hai.
+                  </p>
+                </Show>
                 <ResultChart
                   speed={finishedHistory().speed}
                   errors={finishedHistory().errors}
@@ -705,12 +1028,67 @@ export default function App() {
             >
               sound: {soundOn() ? "on" : "off"}
             </button>
+            <h3 class="dt-muted mb-2 text-sm">difficulty</h3>
+            <div class="mb-8 flex flex-wrap gap-2">
+              <For each={["normal", "expert", "master"] as Difficulty[]}>
+                {(d) => (
+                  <button
+                    class={`rounded px-3 py-1 ${
+                      difficulty() === d ? "dt-accent-bg font-bold" : "dt-surface"
+                    }`}
+                    onClick={() => setDifficulty(d)}
+                  >
+                    {d}
+                  </button>
+                )}
+              </For>
+            </div>
+            <p class="dt-muted mb-8 -mt-6 text-sm">
+              normal: backspace se pichle word par ja sakte ho. expert:
+              backspace sirf current word me. master: backspace band hai.
+            </p>
+            <h3 class="dt-muted mb-2 text-sm">typing behaviour</h3>
+            <div class="mb-8 flex flex-wrap gap-2">
+              <button
+                class="dt-surface rounded px-3 py-1"
+                onClick={() => setBlind(!blind())}
+              >
+                blind mode: {blind() ? "on" : "off"}
+              </button>
+              <button
+                class="dt-surface rounded px-3 py-1"
+                onClick={() => setStopOnError(!stopOnError())}
+              >
+                stop on error: {stopOnError() ? "on" : "off"}
+              </button>
+            </div>
+            <p class="dt-muted mb-8 -mt-6 text-sm">
+              blind mode me sahi/galat rang nahi dikhta, sirf caret dikhta
+              hai. stop on error me pehli galat letter par test khatam ho
+              jata hai.
+            </p>
+            <h3 class="dt-muted mb-2 text-sm">funbox</h3>
+            <div class="mb-8 flex flex-wrap gap-2">
+              <For each={["none", "mirror", "upside_down"] as Funbox[]}>
+                {(f) => (
+                  <button
+                    class={`rounded px-3 py-1 ${
+                      funbox() === f ? "dt-accent-bg font-bold" : "dt-surface"
+                    }`}
+                    onClick={() => setFunbox(f)}
+                  >
+                    {f}
+                  </button>
+                )}
+              </For>
+            </div>
             <h3 class="dt-muted mb-2 text-sm">controls</h3>
             <ul class="dt-muted space-y-1 text-sm">
-              <li>esc — restart test</li>
+              <li>esc — restart test (zen me: finish test)</li>
               <li>space — next word</li>
               <li>backspace on an empty word — previous word</li>
               <li>ctrl + backspace — clear current word</li>
+              <li>caps lock on hone par warning dikhta hai</li>
             </ul>
           </section>
         </Show>
