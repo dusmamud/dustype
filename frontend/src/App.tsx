@@ -310,134 +310,168 @@ export default function App() {
   }
 
   const navClass = (v: View) =>
-    `rounded px-3 py-2 ${
-      view() === v ? "dt-accent-text font-bold" : "dt-muted"
-    }`;
+    `rounded p-2 ${view() === v ? "dt-accent-text" : "dt-muted"}`;
+
+  // Own simple line icons for the nav (keyboard, crown, gear) — drawn
+  // here, not copied from any icon font or from the reference app.
+  function NavIcon(props: { kind: "keyboard" | "crown" | "gear" }) {
+    const kind = props.kind;
+    const common = {
+      width: 20,
+      height: 20,
+      viewBox: "0 0 24 24",
+      fill: "none",
+      stroke: "currentColor",
+      "stroke-width": 1.8,
+      "stroke-linecap": "round",
+      "stroke-linejoin": "round",
+    } as const;
+    if (kind === "keyboard") {
+      return (
+        <svg {...common}>
+          <rect x="2" y="6" width="20" height="12" rx="2" />
+          <path d="M6 10h2M10 10h2M14 10h2M16 10h2M7 14h10" />
+        </svg>
+      );
+    }
+    if (kind === "crown") {
+      return (
+        <svg {...common}>
+          <path d="M3 18h18M4 18l-1-9 5 4 4-6 4 6 5-4-1 9z" />
+        </svg>
+      );
+    }
+    return (
+      <svg {...common}>
+        <circle cx="12" cy="12" r="3" />
+        <path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.5 5.5l2 2M16.5 16.5l2 2M18.5 5.5l-2 2M7.5 16.5l-2 2" />
+      </svg>
+    );
+  }
 
   return (
-    <div class="mx-auto flex min-h-screen w-full max-w-5xl flex-col px-4 py-4 sm:px-8">
-      {/* Header: logo left, nav right — same shell as the reference app,
-          with dustype's own name and no copied logo or assets. */}
+    <div class="mx-auto flex min-h-screen w-full max-w-4xl flex-col px-4 py-4 sm:px-8">
+      {/* Header: small icon + wordmark left, icon-only nav right. */}
       <header class="flex items-center justify-between gap-4">
         <button
-          class="flex items-baseline gap-3 text-left"
+          class="flex items-center gap-2 text-left"
           onClick={() => {
             setView("test");
             window.setTimeout(() => inputEl?.focus(), 0);
           }}
         >
-          <span class="dt-accent-text text-3xl font-bold sm:text-4xl">
-            dustype
+          <span class="dt-accent-text flex items-center">
+            <NavIcon kind="keyboard" />
           </span>
-          <span class="dt-muted hidden text-xs sm:block">
-            a minimal typing test
-          </span>
+          <span class="text-2xl font-bold">dustype</span>
         </button>
-        <nav class="flex gap-1 text-sm" aria-label="Main">
-          <button class={navClass("test")} onClick={() => setView("test")}>
-            test
+        <nav class="flex gap-1" aria-label="Main">
+          <button
+            class={navClass("test")}
+            title="test"
+            onClick={() => setView("test")}
+          >
+            <NavIcon kind="keyboard" />
           </button>
           <button
             class={navClass("leaderboard")}
+            title="leaderboard"
             onClick={() => setView("leaderboard")}
           >
-            leaderboard
+            <NavIcon kind="crown" />
           </button>
           <button
             class={navClass("settings")}
+            title="settings"
             onClick={() => setView("settings")}
           >
-            settings
+            <NavIcon kind="gear" />
           </button>
         </nav>
       </header>
 
       <main class="flex flex-1 flex-col justify-center py-8">
         <Show when={view() === "test"}>
-          {/* Config bar: one rounded surface bar, groups separated by
-              dots, active item in the accent colour. Only modes dustype
-              actually supports are shown — quote, zen, custom,
-              punctuation and numbers are not implemented yet, so they
-              are not shown as dead buttons. */}
+          {/* Config: three small pills, like the reference app —
+              mode pill, value pill, restart pill. Only modes dustype
+              actually supports are shown. */}
           <section
-            class="dt-surface mx-auto flex w-max max-w-full flex-wrap items-center justify-center gap-x-4 gap-y-2 rounded-xl px-5 py-2.5 text-sm"
+            class="flex flex-wrap items-center justify-center gap-2 text-sm"
             aria-label="Test config"
           >
-            <button
-              class={mode() === "time" ? "dt-accent-text font-bold" : "dt-muted"}
-              onClick={() => {
-                setMode("time");
-                newTest();
-              }}
-            >
-              time
-            </button>
-            <button
-              class={mode() === "words" ? "dt-accent-text font-bold" : "dt-muted"}
-              onClick={() => {
-                setMode("words");
-                newTest();
-              }}
-            >
-              words
-            </button>
-            <span class="dt-muted" aria-hidden="true">
-              •
-            </span>
-            <Show when={mode() === "time"}>
-              <For each={[15, 30, 60, 120]}>
-                {(n) => (
-                  <button
-                    class={
-                      timeLimit() === n ? "dt-accent-text font-bold" : "dt-muted"
-                    }
-                    onClick={() => {
-                      setTimeLimit(n);
-                      newTest();
-                    }}
-                  >
-                    {n}
-                  </button>
-                )}
-              </For>
-            </Show>
-            <Show when={mode() === "words"}>
-              <For each={[10, 25, 50, 100]}>
-                {(n) => (
-                  <button
-                    class={
-                      wordCount() === n ? "dt-accent-text font-bold" : "dt-muted"
-                    }
-                    onClick={() => {
-                      setWordCount(n);
-                      newTest();
-                    }}
-                  >
-                    {n}
-                  </button>
-                )}
-              </For>
-            </Show>
-            <span class="dt-muted" aria-hidden="true">
-              •
-            </span>
-            <button class="dt-muted" onClick={newTest}>
-              restart
-            </button>
+            <div class="dt-surface flex gap-4 rounded-lg px-4 py-2">
+              <button
+                class={mode() === "time" ? "dt-accent-text font-bold" : "dt-muted"}
+                onClick={() => {
+                  setMode("time");
+                  newTest();
+                }}
+              >
+                time
+              </button>
+              <button
+                class={mode() === "words" ? "dt-accent-text font-bold" : "dt-muted"}
+                onClick={() => {
+                  setMode("words");
+                  newTest();
+                }}
+              >
+                words
+              </button>
+            </div>
+            <div class="dt-surface flex gap-4 rounded-lg px-4 py-2">
+              <Show when={mode() === "time"}>
+                <For each={[15, 30, 60, 120]}>
+                  {(n) => (
+                    <button
+                      class={
+                        timeLimit() === n ? "dt-accent-text font-bold" : "dt-muted"
+                      }
+                      onClick={() => {
+                        setTimeLimit(n);
+                        newTest();
+                      }}
+                    >
+                      {n}
+                    </button>
+                  )}
+                </For>
+              </Show>
+              <Show when={mode() === "words"}>
+                <For each={[10, 25, 50, 100]}>
+                  {(n) => (
+                    <button
+                      class={
+                        wordCount() === n ? "dt-accent-text font-bold" : "dt-muted"
+                      }
+                      onClick={() => {
+                        setWordCount(n);
+                        newTest();
+                      }}
+                    >
+                      {n}
+                    </button>
+                  )}
+                </For>
+              </Show>
+            </div>
+            <div class="dt-surface rounded-lg px-4 py-2">
+              <button class="dt-muted" title="restart test" onClick={newTest}>
+                ↻
+              </button>
+            </div>
           </section>
 
           <Show when={!finished()}>
-            {/* Timer + live stats, as plain text above the words — not
-                in a card, like the reference app. Live stats appear
-                only once the test has started. */}
-            <section class="mb-6 mt-10 flex flex-wrap items-end gap-8">
-              <span class="dt-accent-text text-2xl">
-                <Show when={mode() === "time"}>{timeLeft()}s</Show>
-                <Show when={mode() === "words"}>
-                  {wordIndex() + 1} / {words().length}
-                </Show>
-              </span>
-              <Show when={startedAt() !== null}>
+            {/* Timer + live stats, only once the test has started. */}
+            <Show when={startedAt() !== null}>
+              <section class="mb-6 mt-10 flex flex-wrap items-end gap-8">
+                <span class="dt-accent-text text-2xl">
+                  <Show when={mode() === "time"}>{timeLeft()}s</Show>
+                  <Show when={mode() === "words"}>
+                    {wordIndex() + 1} / {words().length}
+                  </Show>
+                </span>
                 <span class="dt-muted text-sm">
                   <span class="dt-accent-text text-xl">{liveWpmValue()}</span>{" "}
                   wpm
@@ -455,77 +489,89 @@ export default function App() {
                 <span class="dt-muted text-sm">
                   <span class="text-xl">{liveElapsed()}s</span> elapsed
                 </span>
-              </Show>
-            </section>
+              </section>
+            </Show>
 
-            {/* Words: plain on the page background, larger type, no
-                card. The real input is hidden (opacity-0) like the
-                reference app — the visible caret is a custom bar. */}
-            <section
-              class="cursor-pointer text-xl leading-[2] sm:text-2xl md:text-[1.75rem]"
-              onClick={() => inputEl?.focus()}
-            >
+            <p class="dt-muted mb-6 mt-10 text-center text-sm">english</p>
+
+            {/* Words: plain on the page background. While unfocused the
+                words blur and the focus warning sits centred over them. */}
+            <section class="relative" onClick={() => inputEl?.focus()}>
+              <div class={focused() ? "" : "dt-blurred"}>
+                <div class="cursor-pointer text-xl leading-[2] sm:text-2xl md:text-[1.6rem]">
+                  <For each={words().slice(0, mode() === "words" ? words().length : 60)}>
+                    {(word, i) => {
+                      const done = finishedWords()[i()];
+                      const isCurrent = i() === wordIndex();
+                      return (
+                        <span class="mr-3 inline-block">
+                          <For each={word.split("")}>
+                            {(ch, ci) => {
+                              let cls = "text-[var(--dt-muted)]";
+                              if (done) {
+                                cls =
+                                  done.typed[ci()] === ch
+                                    ? "text-[var(--dt-text)]"
+                                    : "text-[var(--dt-error)]";
+                              } else if (isCurrent) {
+                                const typed = input()[ci()];
+                                if (typed !== undefined) {
+                                  cls =
+                                    typed === ch
+                                      ? "text-[var(--dt-text)]"
+                                      : "text-[var(--dt-error)]";
+                                }
+                              }
+                              return (
+                                <>
+                                  <Show
+                                    when={isCurrent && !done && ci() === input().length}
+                                  >
+                                    <span class="dt-caret" aria-hidden="true" />
+                                  </Show>
+                                  <span class={cls}>{ch}</span>
+                                </>
+                              );
+                            }}
+                          </For>
+                          <Show when={isCurrent && !done && input().length > word.length}>
+                            <For each={input().slice(word.length).split("")}>
+                              {(extra) => (
+                                <span class="text-[var(--dt-error)]">{extra}</span>
+                              )}
+                            </For>
+                          </Show>
+                          <Show when={isCurrent && !done && input().length === word.length}>
+                            <span class="dt-caret" aria-hidden="true" />
+                          </Show>
+                          <Show when={done && done.typed !== word}>
+                            <span class="text-[var(--dt-error)]"> ✕</span>
+                          </Show>
+                        </span>
+                      );
+                    }}
+                  </For>
+                </div>
+              </div>
               <Show when={!focused()}>
-                <p
-                  class="dt-error-text mb-6 cursor-pointer text-base leading-normal"
+                <button
+                  class="absolute inset-0 flex items-center justify-center text-lg"
                   onClick={() => inputEl?.focus()}
                 >
                   Click here or press any key to focus
-                </p>
+                </button>
               </Show>
-              <For each={words().slice(0, mode() === "words" ? words().length : 60)}>
-                {(word, i) => {
-                  const done = finishedWords()[i()];
-                  const isCurrent = i() === wordIndex();
-                  return (
-                    <span class="mr-3 inline-block">
-                      <For each={word.split("")}>
-                        {(ch, ci) => {
-                          let cls = "text-[var(--dt-muted)]";
-                          if (done) {
-                            cls =
-                              done.typed[ci()] === ch
-                                ? "text-[var(--dt-text)]"
-                                : "text-[var(--dt-error)]";
-                          } else if (isCurrent) {
-                            const typed = input()[ci()];
-                            if (typed !== undefined) {
-                              cls =
-                                typed === ch
-                                  ? "text-[var(--dt-text)]"
-                                  : "text-[var(--dt-error)]";
-                            }
-                          }
-                          return (
-                            <>
-                              <Show
-                                when={isCurrent && !done && ci() === input().length}
-                              >
-                                <span class="dt-caret" aria-hidden="true" />
-                              </Show>
-                              <span class={cls}>{ch}</span>
-                            </>
-                          );
-                        }}
-                      </For>
-                      <Show when={isCurrent && !done && input().length > word.length}>
-                        <For each={input().slice(word.length).split("")}>
-                          {(extra) => (
-                            <span class="text-[var(--dt-error)]">{extra}</span>
-                          )}
-                        </For>
-                      </Show>
-                      <Show when={isCurrent && !done && input().length === word.length}>
-                        <span class="dt-caret" aria-hidden="true" />
-                      </Show>
-                      <Show when={done && done.typed !== word}>
-                        <span class="text-[var(--dt-error)]"> ✕</span>
-                      </Show>
-                    </span>
-                  );
-                }}
-              </For>
             </section>
+
+            <div class="mt-8 text-center">
+              <button
+                class="dt-muted text-2xl"
+                title="restart test"
+                onClick={newTest}
+              >
+                ↻
+              </button>
+            </div>
 
             <input
               ref={inputEl}
@@ -672,7 +718,7 @@ export default function App() {
 
       {/* Footer: keytips above, links left, theme + version right. */}
       <footer class="mt-8">
-        <p class="dt-muted mb-4 text-center text-xs">
+        <p class="dt-muted mb-4 text-center text-[11px]">
           <span class="dt-surface rounded px-1">esc</span> restart test
           {" • "}
           <span class="dt-surface rounded px-1">space</span> next word
@@ -680,7 +726,7 @@ export default function App() {
           <span class="dt-surface rounded px-1">ctrl + backspace</span>{" "}
           clear word
         </p>
-        <div class="dt-muted flex flex-col justify-between gap-4 text-xs sm:flex-row">
+        <div class="dt-muted flex flex-col justify-between gap-4 text-[11px] sm:flex-row">
           <div class="flex flex-wrap gap-4">
             <a
               href="https://github.com/dusmamud/dustype"

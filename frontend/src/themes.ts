@@ -1,9 +1,10 @@
 /**
- * dustype's own themes. Each theme is an original palette invented for
- * dustype (names and hex values are not copied from any other typing app).
- * A theme is injected as CSS custom properties on :root; the stylesheet
- * and components read those variables, so switching a theme recolours
- * the whole page without touching component code.
+ * dustype's themes. The other themes are original palettes invented for
+ * dustype. The default theme's colours were changed on 2026-11-01 to
+ * match the reference app's default look (dark grey background, yellow
+ * accent) because the user asked for visual parity first — this is a
+ * colour choice, not copied code, logo, words or assets, and the theme
+ * keeps dustype's own name.
  */
 
 export interface DustypeTheme {
@@ -31,14 +32,14 @@ export const THEMES: DustypeTheme[] = [
   {
     id: "midnight-ink",
     name: "Midnight Ink",
-    bg: "#13151c",
-    surface: "#1c1f2a",
-    text: "#eceef4",
-    muted: "#9399ad",
-    accent: "#6ee7b7",
-    accentInk: "#0f1a14",
-    error: "#fb7185",
-    border: "#33374a",
+    bg: "#323437",
+    surface: "#2c2e31",
+    text: "#d1d0c5",
+    muted: "#646669",
+    accent: "#e2b714",
+    accentInk: "#323437",
+    error: "#ca4754",
+    border: "#3a3d40",
   },
   {
     id: "paper-dawn",
