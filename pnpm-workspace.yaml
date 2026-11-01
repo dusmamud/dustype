@@ -5,3 +5,10 @@ packages:
 
 engineStrict: true
 saveExact: true
+
+# pnpm 10+ ignores dependency build scripts by default and fails the
+# install when any are ignored. esbuild (used by vite/tsup) needs its
+# postinstall script to install its platform binary, so allow it here.
+# This is the only build script in the dependency tree.
+onlyBuiltDependencies:
+  - esbuild
