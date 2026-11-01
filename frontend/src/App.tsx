@@ -1,4 +1,11 @@
-import { createEffect, createSignal, For, onCleanup, Show } from "solid-js";
+import {
+  createEffect,
+  createSignal,
+  For,
+  onCleanup,
+  onMount,
+  Show,
+} from "solid-js";
 import { calculateStats, countCharResults, pickRandomWords } from "@dustype/util";
 import { WORDS } from "./words";
 import ResultChart from "./ResultChart";
@@ -65,6 +72,7 @@ export default function App() {
   const [customStarted, setCustomStarted] = createSignal(false);
   const [customError, setCustomError] = createSignal<string | null>(null);
   const [resultSaveError, setResultSaveError] = createSignal(false);
+  const [tabPressed, setTabPressed] = createSignal(false);
   const [leaderboard, setLeaderboard] = createSignal<LeaderboardEntry[]>([]);
   const [leaderboardLoading, setLeaderboardLoading] = createSignal(false);
   const [leaderboardError, setLeaderboardError] = createSignal<string | null>(
@@ -80,11 +88,22 @@ export default function App() {
     return THEMES.find((t) => t.id === themeId())?.name ?? themeId();
   }
 
+  // BUG FIX 2026-11-01: frontend used to fetch port 5005 while the dev
+  // backend actually runs on 5006, so leaderboard/results always failed
+  // locally even with the backend up. Try 5006 first, fall back to 5005.
+  async function apiFetch(path: string, options?: RequestInit) {
+    try {
+      return await fetch(`http://localhost:5006${path}`, options);
+    } catch {
+      return await fetch(`http://localhost:5005${path}`, options);
+    }
+  }
+
   async function loadLeaderboard() {
     setLeaderboardLoading(true);
     setLeaderboardError(null);
     try {
-      const res = await fetch("http://localhost:5005/api/leaderboards?limit=20");
+      const res = await apiFetch("/api/leaderboards?limit=20");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = (await res.json()) as { leaderboard?: LeaderboardEntry[] };
       setLeaderboard(data.leaderboard ?? []);
@@ -241,7 +260,7 @@ export default function App() {
     try {
       const stats = results();
       if (!stats) return;
-      await fetch("http://localhost:5005/api/results", {
+      await apiFetch("/api/results", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -320,14 +339,34 @@ export default function App() {
   }
 
   function onKeyDown(e: KeyboardEvent) {
-    if (finished()) return;
-    setCapsLock(e.getModifierState("CapsLock"));
+    // Esc works even after finish (before, finished() returned early
+    // and Esc after results did nothing, despite the footer saying
+    // "esc restart test").
     if (e.key === "Escape") {
       e.preventDefault();
-      if (mode() === "zen" && startedAt() !== null) finishTest();
-      else newTest();
+      if (!finished() && mode() === "zen" && startedAt() !== null) {
+        finishTest();
+      } else {
+        newTest();
+      }
       return;
     }
+    // Tab+Enter quick restart, like the reference app: Tab alone must
+    // not move focus away from the test.
+    if (e.key === "Tab") {
+      e.preventDefault();
+      setTabPressed(true);
+      return;
+    }
+    if (e.key === "Enter" && tabPressed()) {
+      e.preventDefault();
+      setTabPressed(false);
+      newTest();
+      return;
+    }
+    setTabPressed(false);
+    if (finished()) return;
+    setCapsLock(e.getModifierState("CapsLock"));
     if (e.key === "Backspace") {
       if (difficulty() === "master") {
         e.preventDefault();
@@ -404,14 +443,50 @@ export default function App() {
   window.addEventListener("focus", onWindowFocus);
 
   function autofocusHandler(e: KeyboardEvent) {
-    if (finished()) return;
     if (view() !== "test") return;
+    // Tab+Enter must also work when the input is not focused (after
+    // clicking a button, Tab used to move focus away from the test).
+    if (e.key === "Tab") {
+      const active = document.activeElement as HTMLElement | null;
+      if (active?.tagName !== "TEXTAREA") {
+        e.preventDefault();
+        setTabPressed(true);
+      }
+      return;
+    }
+    if (e.key === "Enter" && tabPressed()) {
+      e.preventDefault();
+      setTabPressed(false);
+      newTest();
+      return;
+    }
+    if (e.key === "Escape") {
+      // After results, Esc restarts even when the input is blurred.
+      if (finished()) {
+        e.preventDefault();
+        newTest();
+      }
+      return;
+    }
+    if (finished()) return;
     if (document.activeElement === inputEl) return;
     if (e.key.length !== 1 && e.key !== " ") return;
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     inputEl?.focus();
   }
   document.addEventListener("keydown", autofocusHandler);
+  // BUG FIX 2026-11-01: on first load the initial-words code set words
+  // without calling newTest, so the input was never focused and the
+  // words stayed blurred with the focus warning — unlike the reference
+  // app, which focuses the test on mount.
+  onMount(() => {
+    window.setTimeout(() => inputEl?.focus(), 0);
+  });
+  createEffect(() => {
+    if (view() === "test") {
+      window.setTimeout(() => inputEl?.focus(), 0);
+    }
+  });
   onCleanup(() => {
     document.removeEventListener("keydown", autofocusHandler);
     window.removeEventListener("blur", onWindowBlur);
@@ -700,22 +775,24 @@ export default function App() {
                 Window focus me nahi hai — window par click karo, fir type karo.
               </p>
             </Show>
-            {/* Timer + live stats, only once the test has started. */}
-            <Show when={startedAt() !== null}>
-              <section class="mb-6 mt-10 flex flex-wrap items-end gap-8">
-                <span class="dt-accent-text text-2xl">
-                  <Show when={mode() === "time"}>{timeLeft()}s</Show>
-                  <Show when={mode() === "zen"}>{liveElapsed()}s</Show>
-                  <Show
-                    when={
-                      mode() === "words" ||
-                      mode() === "quote" ||
-                      mode() === "custom"
-                    }
-                  >
-                    {wordIndex() + 1} / {words().length}
-                  </Show>
-                </span>
+            {/* Timer always visible, like the reference app — before,
+                it was hidden until the test started, so a fresh page
+                showed no timer at all. Live wpm/acc only after start. */}
+            <section class="mb-6 mt-10 flex flex-wrap items-end gap-8">
+              <span class="dt-accent-text text-2xl">
+                <Show when={mode() === "time"}>{timeLeft()}s</Show>
+                <Show when={mode() === "zen"}>{liveElapsed()}s</Show>
+                <Show
+                  when={
+                    mode() === "words" ||
+                    mode() === "quote" ||
+                    mode() === "custom"
+                  }
+                >
+                  {wordIndex() + 1} / {words().length}
+                </Show>
+              </span>
+              <Show when={startedAt() !== null}>
                 <span class="dt-muted text-sm">
                   <span class="dt-accent-text text-xl">{liveWpmValue()}</span>{" "}
                   wpm
@@ -733,8 +810,8 @@ export default function App() {
                 <span class="dt-muted text-sm">
                   <span class="text-xl">{liveElapsed()}s</span> elapsed
                 </span>
-              </section>
-            </Show>
+              </Show>
+            </section>
 
             <p class="dt-muted mb-6 mt-10 text-center text-sm">
               <Show when={mode() === "quote" || mode() === "custom"}>
@@ -1097,6 +1174,9 @@ export default function App() {
       {/* Footer: keytips above, links left, theme + version right. */}
       <footer class="mt-8">
         <p class="dt-muted mb-4 text-center text-[11px]">
+          <span class="dt-surface rounded px-1">tab + enter</span> restart
+          test
+          {" • "}
           <span class="dt-surface rounded px-1">esc</span> restart test
           {" • "}
           <span class="dt-surface rounded px-1">space</span> next word
