@@ -1,0 +1,7 @@
+packages:
+  - frontend
+  - backend
+  - packages/*
+
+engineStrict: true
+saveExact: true

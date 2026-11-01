@@ -1,0 +1,57 @@
+# Deploy the dustype frontend to Cloudflare Pages on every push to main.
+# Build happens in GitHub Actions; Cloudflare only receives the ready
+# frontend/dist folder, so this does NOT consume Cloudflare's
+# 500 builds/month quota.
+#
+# Pick ONE deploy path: this Actions workflow OR Cloudflare dashboard Git
+# integration — NOT both, or every push double-deploys.
+#
+# Prerequisites (already done):
+# 1. Cloudflare Pages project named EXACTLY "dustype" (Direct Uploads,
+#    no Git repo connected), serving https://dustype.pages.dev
+# 2. Repo Settings -> Secrets and variables -> Actions:
+#    - CLOUDFLARE_API_TOKEN (API token with Cloudflare Pages: Edit)
+#    - CLOUDFLARE_ACCOUNT_ID (Account ID from the dashboard)
+#
+# Note: only the static frontend is deployed here. The Express backend
+# (auth, results, leaderboards) is not part of a Pages deploy; on the
+# live site, result submission falls back to local-only results.
+name: Deploy to Cloudflare Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Never deploy two pushes at once; queue them instead.
+concurrency:
+  group: pages-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.21.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # turbo's build task depends on ^build, so this builds the
+      # @dustype/util and @dustype/schemas packages first, then the
+      # frontend (frontend/dist is what Pages serves).
+      - run: pnpm build-fe
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+          command: pages deploy frontend/dist --project-name=dustype --branch=main --commit-dirty=true

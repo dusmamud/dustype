@@ -1,0 +1,102 @@
+@import "tailwindcss";
+
+/* Default palette = Midnight Ink (see themes.ts); applyTheme() overwrites
+   these variables on :root at runtime, so the page recolours instantly. */
+:root {
+  --dt-bg: #13151c;
+  --dt-surface: #1c1f2a;
+  --dt-text: #eceef4;
+  --dt-muted: #9399ad;
+  --dt-accent: #6ee7b7;
+  --dt-accent-ink: #0f1a14;
+  --dt-error: #fb7185;
+  --dt-border: #33374a;
+}
+
+body {
+  background-color: var(--dt-bg);
+  color: var(--dt-text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  transition: background-color 0.25s, color 0.25s;
+}
+
+button {
+  transition: background-color 0.125s, color 0.125s;
+}
+
+/* Blinking caret at the current character, 1s smooth flash like the
+   reference app's caretFlashSmooth. It is an inline bar so it wraps
+   correctly with the words on small screens. */
+.dt-caret {
+  display: inline-block;
+  width: 3px;
+  height: 1em;
+  margin-right: 1px;
+  vertical-align: text-bottom;
+  background-color: var(--dt-accent);
+  animation: dtCaretFlash 1s infinite;
+}
+
+@keyframes dtCaretFlash {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+.dt-fade-in {
+  animation: dtFadeIn 250ms ease-in 1 forwards;
+}
+
+@keyframes dtFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* Theme-aware helpers: components use these instead of hardcoded colours
+   so a theme switch recolours background, text, accent and errors. */
+.dt-surface {
+  background-color: var(--dt-surface);
+}
+.dt-muted {
+  color: var(--dt-muted);
+}
+.dt-accent-text {
+  color: var(--dt-accent);
+}
+.dt-accent-bg {
+  background-color: var(--dt-accent);
+  color: var(--dt-accent-ink);
+}
+.dt-error-text {
+  color: var(--dt-error);
+}
+.dt-border {
+  border-color: var(--dt-border);
+}
+.dt-input {
+  background-color: var(--dt-surface);
+  border-color: var(--dt-border);
+  color: var(--dt-text);
+}
+.dt-input:focus {
+  border-color: var(--dt-accent);
+}
