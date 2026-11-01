@@ -16,6 +16,11 @@
 # Note: only the static frontend is deployed here. The Express backend
 # (auth, results, leaderboards) is not part of a Pages deploy; on the
 # live site, result submission falls back to local-only results.
+# Note: we deploy with `pnpm dlx wrangler` instead of
+# cloudflare/wrangler-action. That action detects pnpm, then tries
+# `pnpm add wrangler@4` without -w, which fails in a pnpm workspace
+# root (ERR_PNPM_ADDING_TO_ROOT). dlx downloads wrangler on demand
+# without touching the workspace or the lockfile.
 name: Deploy to Cloudflare Pages
 
 on:
@@ -49,9 +54,7 @@ jobs:
       # frontend (frontend/dist is what Pages serves).
       - run: pnpm build-fe
       - name: Deploy to Cloudflare Pages
-        uses: cloudflare/wrangler-action@v4
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
-          command: pages deploy frontend/dist --project-name=dustype --branch=main --commit-dirty=true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: pnpm dlx wrangler@4 pages deploy frontend/dist --project-name=dustype --branch=main --commit-dirty=true
