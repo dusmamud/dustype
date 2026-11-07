@@ -74,3 +74,4 @@ Dev servers are intentionally not started by the build itself.
 ## License
 
 GPL-3.0 — see `LICENSE`.
+Tip: press `Esc` to restart a test instantly, and use `Ctrl+Backspace` to clear the current word.
