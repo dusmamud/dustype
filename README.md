@@ -77,3 +77,4 @@ GPL-3.0 — see `LICENSE`.
 Tip: press `Esc` to restart a test instantly, and use `Ctrl+Backspace` to clear the current word.
 Note: without a `DB_URI` the backend keeps results in memory only, so all results are lost on restart.
 The live site serves only the static frontend — the Express backend is not part of a Pages deploy, so result submission there falls back to local-only results.
+Public leaderboards show display names only — never email, owner ID or password hash.
