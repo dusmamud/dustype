@@ -75,3 +75,4 @@ Dev servers are intentionally not started by the build itself.
 
 GPL-3.0 — see `LICENSE`.
 Tip: press `Esc` to restart a test instantly, and use `Ctrl+Backspace` to clear the current word.
+Note: without a `DB_URI` the backend keeps results in memory only, so all results are lost on restart.
